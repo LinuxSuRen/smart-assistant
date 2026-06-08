@@ -65,6 +65,33 @@ TOOL_DEFINITIONS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "opencode_run",
+            "description": (
+                "Use opencode (an AI coding assistant) to help write, edit, or analyze code. "
+                "Give it a natural language description of the coding task. "
+                "It can read files, write code, refactor, fix bugs, add features, etc. "
+                "Specify the directory where the codebase lives. "
+                "Use this for any code-related tasks."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "message": {
+                        "type": "string",
+                        "description": "Natural language description of the coding task.",
+                    },
+                    "directory": {
+                        "type": "string",
+                        "description": "Absolute path to the codebase directory. Defaults to ~/. Use '.' for current directory.",
+                    },
+                },
+                "required": ["message"],
+            },
+        },
+    },
 ]
 
 DANGEROUS_COMMANDS = {
@@ -158,10 +185,52 @@ def _fmt_size(size: int) -> str:
     return f"{size:.0f}TB"
 
 
+OPECNCODE_PATH = "/home/suren/.opencode/bin/opencode"
+OPENCODE_TIMEOUT = 120
+
+
+def execute_opencode(message: str, directory: str = None) -> dict:
+    if not directory:
+        directory = os.path.expanduser("~")
+    elif directory == ".":
+        directory = os.getcwd()
+    directory = os.path.expanduser(directory)
+
+    if not os.path.exists(directory):
+        return {"success": False, "output": f"Directory not found: {directory}"}
+
+    binary = OPECNCODE_PATH
+    if not os.path.exists(binary):
+        binary = "opencode"
+
+    try:
+        result = subprocess.run(
+            [binary, "run", message, "--dir", directory,
+             "--dangerously-skip-permissions", "--format", "json"],
+            capture_output=True, text=True, timeout=OPENCODE_TIMEOUT,
+            env={**os.environ},
+        )
+        output = result.stdout.strip()
+        if result.stderr:
+            output += "\n" + result.stderr.strip()
+        if not output:
+            output = "(no output)"
+        if len(output) > 6000:
+            output = output[:6000] + "\n... (truncated)"
+        return {"success": result.returncode == 0, "output": output}
+    except subprocess.TimeoutExpired:
+        return {"success": False, "output": f"Opencode task timed out after {OPENCODE_TIMEOUT}s."}
+    except FileNotFoundError:
+        return {"success": False, "output": "Opencode binary not found. Is it installed at ~/.opencode/bin/opencode?"}
+    except Exception as e:
+        return {"success": False, "output": str(e)}
+
+
 TOOL_HANDLERS: dict[str, Callable] = {
     "run_command": execute_command,
     "read_file": read_file,
     "list_directory": list_directory,
+    "opencode_run": execute_opencode,
 }
 
 
