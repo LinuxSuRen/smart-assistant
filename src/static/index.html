@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Assistant</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="header-top">
+      <h1>Smart Assistant</h1>
+      <span id="recordingTimer" class="timer hidden">00:00</span>
+    </div>
+    <div class="controls">
+      <button id="btnToggle" class="btn-record" disabled>Start Recording</button>
+      <select id="selMode">
+        <option value="dialogue" selected>Dialogue (AI Reply)</option>
+        <option value="transcribe">Transcribe Only</option>
+      </select>
+      <button id="btnSummarize" class="btn-summarize" disabled>Summarize</button>
+      <span id="status" class="status idle">Disconnected</span>
+    </div>
+  </header>
+
+  <main id="transcript">
+    <div class="placeholder">Press "Start Recording" and speak...</div>
+  </main>
+
+  <footer>
+    <div id="speakers" class="speaker-list"></div>
+  </footer>
+</div>
+
+<audio id="audioPlayer" hidden></audio>
+<script src="/static/app.js"></script>
+</body>
+</html>
