@@ -92,6 +92,64 @@ TOOL_DEFINITIONS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "end_conversation",
+            "description": (
+                "End the current conversation session. Call this when the user explicitly "
+                "asks to end the conversation, says goodbye, or wants to stop. "
+                "After calling this, the conversation will be terminated."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_speaker_name",
+            "description": (
+                "Set the display name for the current speaker. Call this when a user "
+                "introduces themselves by name (e.g. 'My name is Zhang San', '我叫李四'). "
+                "Extract only the person's name, not titles or honorifics."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "The person's name to display in the conversation UI.",
+                    }
+                },
+                "required": ["name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_assistant_name",
+            "description": (
+                "Rename the voice assistant. Call this when the user explicitly asks "
+                "to change the assistant's name (e.g. '从现在起你叫小明', 'Your name is now Alex'). "
+                "After calling this, always acknowledge the name change in your response."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "The new name for the assistant.",
+                    }
+                },
+                "required": ["name"],
+            },
+        },
+    },
 ]
 
 DANGEROUS_COMMANDS = {
@@ -226,11 +284,26 @@ def execute_opencode(message: str, directory: str = None) -> dict:
         return {"success": False, "output": str(e)}
 
 
+def terminate_conversation() -> dict:
+    return {"success": True, "output": "Conversation ended.", "end_conversation": True}
+
+
+def set_speaker_name(name: str) -> dict:
+    return {"success": True, "output": f"Speaker name set to: {name}", "speaker_rename": name.strip()}
+
+
+def rename_assistant(name: str) -> dict:
+    return {"success": True, "output": f"Assistant renamed to: {name}", "assistant_rename": name.strip()}
+
+
 TOOL_HANDLERS: dict[str, Callable] = {
     "run_command": execute_command,
     "read_file": read_file,
     "list_directory": list_directory,
     "opencode_run": execute_opencode,
+    "end_conversation": terminate_conversation,
+    "set_speaker_name": set_speaker_name,
+    "set_assistant_name": rename_assistant,
 }
 
 

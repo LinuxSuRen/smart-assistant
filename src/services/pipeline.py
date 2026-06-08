@@ -12,6 +12,14 @@ class TranscriptionPipeline:
         from .diarization import DiarizationProcessor
         from .llm import LLMProcessor
         from .tts import TTSProcessor
+        from .memory import MemoryStore
+
+        self.memory = MemoryStore(memory_dir=settings.memory_dir)
+        memory_context = self.memory.get_memory_context()
+        assistant_name = self.memory.get_assistant_name()
+        system_prompt = f"Your name is {assistant_name}. " + settings.llm_system_prompt
+        if memory_context:
+            system_prompt = memory_context + "\n\n" + system_prompt
 
         self.vad = VADProcessor(
             threshold=settings.vad_threshold,
@@ -33,7 +41,7 @@ class TranscriptionPipeline:
             model=settings.llm_model,
             api_key=settings.llm_api_key,
             base_url=settings.llm_base_url,
-            system_prompt=settings.llm_system_prompt,
+            system_prompt=system_prompt,
             max_history=settings.llm_max_history,
         )
         self.tts = TTSProcessor(voice=settings.tts_voice)
@@ -100,3 +108,13 @@ class TranscriptionPipeline:
     def reset(self):
         self.buffer = np.array([], dtype=np.float32)
         self.processed_offset = 0.0
+
+    async def summarize_history(self, history_text: str) -> str:
+        if not history_text.strip() or not self.llm.client:
+            return ""
+        from .summarizer import summarize_text
+        return await summarize_text(self.llm.client, self.llm.model, history_text)
+
+    def save_memory(self, summary: str):
+        if summary.strip():
+            self.memory.save_memory(summary)

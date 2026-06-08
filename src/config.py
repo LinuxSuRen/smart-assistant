@@ -32,7 +32,9 @@ class Settings(BaseSettings):
         "Use opencode for any coding tasks (write code, fix bugs, add features, refactor). "
         "Use tools when you need factual information or system access. "
         "Respond concisely in 1-3 sentences. Format command output nicely. "
-        "If the user speaks Chinese, respond in Chinese. If English, respond in English."
+        "If the user speaks Chinese, respond in Chinese. If English, respond in English. "
+        "When the user says goodbye or asks to end the conversation, call the end_conversation tool. "
+        "When a user introduces themselves by name (e.g. '我叫...', 'My name is...'), call set_speaker_name."
     )
     llm_max_history: int = 20
 
@@ -46,6 +48,9 @@ class Settings(BaseSettings):
 
     # Audio buffer
     buffer_duration_seconds: float = 10.0
+
+    # Memory
+    memory_dir: str = "data/memory"
 
     model_config = {"env_prefix": "SA_", "env_file": ".env", "extra": "ignore"}
 

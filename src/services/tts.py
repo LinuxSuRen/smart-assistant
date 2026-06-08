@@ -1,5 +1,29 @@
+import re
 import tempfile
 import os
+
+
+_MD_PATTERNS = [
+    (re.compile(r"\*\*\*(.+?)\*\*\*"), r"\1"),   # ***bold italic***
+    (re.compile(r"\*\*(.+?)\*\*"), r"\1"),         # **bold**
+    (re.compile(r"__(.+?)__"), r"\1"),             # __underline__
+    (re.compile(r"\*(.+?)\*"), r"\1"),             # *italic*
+    (re.compile(r"_(.+?)_"), r"\1"),               # _italic_
+    (re.compile(r"~~(.+?)~~"), r"\1"),             # ~~strikethrough~~
+    (re.compile(r"`(.+?)`"), r"\1"),               # `code`
+    (re.compile(r"^#{1,6}\s+", re.MULTILINE), ""), # headings
+    (re.compile(r"^[-*+]\s+", re.MULTILINE), ""),  # list markers
+    (re.compile(r"^\d+\.\s+", re.MULTILINE), ""),  # ordered list markers
+    (re.compile(r"\[([^\]]+)\]\([^)]+\)"), r"\1"),  # [text](link)
+    (re.compile(r"!\[([^\]]*)\]\([^)]+\)"), r"\1"), # ![alt](image)
+    (re.compile(r"^>\s+", re.MULTILINE), ""),      # blockquotes
+]
+
+
+def strip_markdown(text: str) -> str:
+    for pattern, replacement in _MD_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text.strip()
 
 
 class TTSProcessor:
@@ -20,7 +44,10 @@ class TTSProcessor:
     async def synthesize(self, text: str) -> bytes:
         if not text.strip() or not self.available:
             return b""
-        communicate = self._edge_tts.Communicate(text, self.voice)
+        speak_text = strip_markdown(text)
+        if not speak_text:
+            return b""
+        communicate = self._edge_tts.Communicate(speak_text, self.voice)
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
             temp_path = f.name
         try:

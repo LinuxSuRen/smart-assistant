@@ -41,6 +41,7 @@ class LLMProcessor:
             self.history = self.history[-(self.max_history * 2):]
 
         all_tool_calls = []
+        end_conversation = False
 
         try:
             for _ in range(MAX_TOOL_ROUNDS):
@@ -51,7 +52,7 @@ class LLMProcessor:
                     reply = msg.content or ""
                     if reply:
                         self.history.append({"role": "assistant", "content": reply})
-                    return {"text": reply, "tool_calls": all_tool_calls}
+                    return {"text": reply, "tool_calls": all_tool_calls, "end_conversation": end_conversation}
 
                 for tc in msg.tool_calls:
                     name = tc.function.name
@@ -67,6 +68,8 @@ class LLMProcessor:
                             "call_id": tc.id,
                         })
                     result = await execute_tool(name, args)
+                    if name == "end_conversation" and result.get("end_conversation"):
+                        end_conversation = True
                     if progress_cb:
                         await progress_cb({
                             "type": "tool_result",
@@ -89,10 +92,21 @@ class LLMProcessor:
 
             reply = "[Max tool rounds reached]"
             self.history.append({"role": "assistant", "content": reply})
-            return {"text": reply, "tool_calls": all_tool_calls}
+            return {"text": reply, "tool_calls": all_tool_calls, "end_conversation": end_conversation}
 
         except Exception as e:
-            return {"text": f"[LLM Error: {e}]", "tool_calls": all_tool_calls}
+            return {"text": f"[LLM Error: {e}]", "tool_calls": all_tool_calls, "end_conversation": end_conversation}
 
     def clear_history(self):
         self.history = []
+
+    def get_history_text(self) -> str:
+        lines = []
+        for entry in self.history:
+            role = entry.get("role", "")
+            content = entry.get("content", "")
+            if role == "user":
+                lines.append(content)
+            elif role == "assistant":
+                lines.append(f"Assistant: {content}")
+        return "\n".join(lines)

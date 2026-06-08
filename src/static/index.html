@@ -34,6 +34,19 @@
 </div>
 
 <audio id="audioPlayer" hidden></audio>
+
+<div id="memoryModal" class="memory-modal hidden">
+  <div class="memory-modal-card">
+    <h2>Save Conversation as Memory?</h2>
+    <p class="memory-preview" id="memorySummary"></p>
+    <div class="memory-actions">
+      <button id="btnSaveMemory" class="btn-save">Save</button>
+      <button id="btnDismissMemory" class="btn-dismiss">Dismiss</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

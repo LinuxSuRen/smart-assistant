@@ -18,6 +18,10 @@ const transcriptEl = document.getElementById('transcript');
 const speakersEl = document.getElementById('speakers');
 const audioPlayer = document.getElementById('audioPlayer');
 const recordingTimer = document.getElementById('recordingTimer');
+const memoryModal = document.getElementById('memoryModal');
+const memorySummary = document.getElementById('memorySummary');
+const btnSaveMemory = document.getElementById('btnSaveMemory');
+const btnDismissMemory = document.getElementById('btnDismissMemory');
 
 function fmtOffset(sec) {
   const m = Math.floor(sec / 60);
@@ -155,6 +159,21 @@ function handleMessage(msg) {
     btnSummarize.classList.remove('summarizing');
     btnSummarize.disabled = false;
     addSummary(msg.text);
+  } else if (msg.type === 'conversation_ended') {
+    stopRecording();
+    if (msg.summary) {
+      showMemoryPrompt(msg.summary);
+    }
+  } else if (msg.type === 'speaker_rename') {
+    speakerMap[msg.speaker] = msg.name;
+    updateSpeakerList();
+    updateSpeakerLabels(msg.speaker, msg.name);
+  } else if (msg.type === 'stopped') {
+    stopRecording();
+    statusEl.textContent = 'Session ended';
+    statusEl.className = 'status idle';
+    btnToggle.disabled = true;
+    btnToggle.classList.remove('recording');
   }
 }
 
@@ -196,7 +215,7 @@ function addTranscript(speaker, text, start, end) {
         '  <span style="opacity:0.5">' + duration + 's</span>' +
       '</span>' +
     '</div>' +
-    '<div class="text">' + escapeHtml(text) + '</div>' +
+    '<div class="text md-content">' + renderMarkdown(text) + '</div>' +
     '<div class="time-bar"><div class="bar-inner" style="left:' + barLeft + '%;width:' + barWidth + '%;background:' + color + '"></div></div>';
 
   transcriptEl.appendChild(div);
@@ -218,7 +237,7 @@ function addResponse(role, text) {
       '<span class="speaker-label" style="color:#66bb6a">AI Assistant</span>' +
       '<span class="msg-time">' + now + '</span>' +
     '</div>' +
-    '<div class="text">' + escapeHtml(text) + '</div>';
+    '<div class="text md-content">' + renderMarkdown(text) + '</div>';
   transcriptEl.appendChild(div);
   requestAnimationFrame(() => {
     div.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -229,7 +248,7 @@ function addSystemMessage(text) {
   const div = document.createElement('div');
   div.className = 'message';
   div.style.background = '#3a1a1a';
-  div.innerHTML = '<div class="text" style="color:#ef5350">' + escapeHtml(text) + '</div>';
+  div.innerHTML = '<div class="text md-content" style="color:#ef5350">' + renderMarkdown(text) + '</div>';
   transcriptEl.appendChild(div);
 }
 
@@ -269,7 +288,31 @@ function updateSpeakerList() {
   }
 }
 
-function escapeHtml(str) {
+function updateSpeakerLabels(speaker, name) {
+  const messages = transcriptEl.querySelectorAll('.message');
+  const oldName = Object.keys(speakerMap).find(k => speakerMap[k] === name && k !== speaker) || '';
+  for (const msg of messages) {
+    const label = msg.querySelector('.speaker-label');
+    if (!label) continue;
+    if (label.textContent === name) continue;
+    if (oldName && label.textContent === oldName) {
+      label.textContent = name;
+    }
+  }
+  const otherOld = speaker.startsWith('SPEAKER_') ? 'Person ' + (parseInt(speaker.split('_')[1]) + 1) : speaker;
+  for (const msg of messages) {
+    const label = msg.querySelector('.speaker-label');
+    if (label && label.textContent === otherOld) {
+      label.textContent = name;
+    }
+  }
+}
+
+function renderMarkdown(str) {
+  if (typeof marked !== 'undefined') {
+    marked.setOptions({ breaks: true, gfm: true });
+    return marked.parse(str);
+  }
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
@@ -283,7 +326,7 @@ function addToolCall(name, args, callId) {
   div.className = 'message tool-call';
   div.id = 'tool-' + callId;
   const label = name === 'run_command' ? 'Command' : name === 'read_file' ? 'Read File' : name === 'list_directory' ? 'List Dir' : name;
-  const argsStr = args && Object.keys(args).length ? escapeHtml(JSON.stringify(args)) : '';
+  const argsStr = args && Object.keys(args).length ? JSON.stringify(args).replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'})[c]) : '';
   div.innerHTML =
     '<div class="msg-header">' +
       '<span class="tool-icon">&#9881;</span>' +
@@ -390,6 +433,9 @@ function stopRecording() {
 
 btnToggle.addEventListener('click', () => {
   if (isRecording) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'stop' }));
+    }
     stopRecording();
   } else {
     startRecording();
@@ -416,7 +462,7 @@ function addSummary(text) {
       '<span class="speaker-label" style="color:#b388ff">Summary</span>' +
       '<span class="msg-time">' + now + '</span>' +
     '</div>' +
-    '<div class="text">' + escapeHtml(text) + '</div>';
+    '<div class="text md-content">' + renderMarkdown(text) + '</div>';
   transcriptEl.appendChild(div);
   requestAnimationFrame(() => {
     div.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -440,6 +486,29 @@ btnSummarize.addEventListener('click', () => {
     return;
   }
   ws.send(JSON.stringify({ type: 'summarize', text }));
+});
+
+function showMemoryPrompt(summary) {
+  memorySummary.textContent = summary;
+  memoryModal.classList.remove('hidden');
+}
+
+function hideMemoryPrompt() {
+  memoryModal.classList.add('hidden');
+}
+
+btnSaveMemory.addEventListener('click', () => {
+  hideMemoryPrompt();
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'save_memory' }));
+  }
+});
+
+btnDismissMemory.addEventListener('click', () => {
+  hideMemoryPrompt();
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'dismiss_memory' }));
+  }
 });
 
 connectWebSocket();

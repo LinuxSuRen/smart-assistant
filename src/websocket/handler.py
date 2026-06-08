@@ -30,6 +30,7 @@ async def websocket_endpoint(websocket: WebSocket):
     cooldown_until = 0.0
     processing_tts = False
     current_tts_task = None
+    pending_end_conversation = False
 
     async def send_json(msg):
         try:
@@ -38,7 +39,7 @@ async def websocket_endpoint(websocket: WebSocket):
             pass
 
     async def process_llm_tts(text, speaker):
-        nonlocal cooldown_until, processing_tts
+        nonlocal cooldown_until, processing_tts, pending_end_conversation
         processing_tts = True
         cooldown_until = time.time() + 60.0
         await send_json({"type": "busy", "status": True})
@@ -49,6 +50,17 @@ async def websocket_endpoint(websocket: WebSocket):
         try:
             reply = await pipeline.get_llm_response(text, speaker, progress_cb=tool_progress)
             reply_text = reply.get("text", "") if isinstance(reply, dict) else str(reply)
+            if reply.get("end_conversation"):
+                pending_end_conversation = True
+            for tc in reply.get("tool_calls", []):
+                if tc.get("name") == "set_speaker_name":
+                    rename = tc.get("result", {}).get("speaker_rename", "")
+                    if rename:
+                        await send_json({"type": "speaker_rename", "speaker": speaker, "name": rename})
+                elif tc.get("name") == "set_assistant_name":
+                    new_name = tc.get("result", {}).get("assistant_rename", "")
+                    if new_name:
+                        pipeline.memory.set_assistant_name(new_name)
             if reply_text:
                 tts_bytes = await pipeline.get_tts_audio(reply_text)
                 tts_b64 = base64.b64encode(tts_bytes).decode() if tts_bytes else ""
@@ -62,6 +74,16 @@ async def websocket_endpoint(websocket: WebSocket):
         cooldown_until = time.time() + 8.0
         pipeline.reset()
         processing_tts = False
+
+    async def send_memory_prompt():
+        nonlocal pending_end_conversation
+        pending_end_conversation = False
+        history_text = pipeline.llm.get_history_text()
+        if not history_text.strip():
+            await send_json({"type": "conversation_ended", "summary": ""})
+            return
+        summary_preview = history_text[:300] + ("..." if len(history_text) > 300 else "")
+        await send_json({"type": "conversation_ended", "summary": summary_preview})
 
     try:
         while True:
@@ -84,14 +106,17 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 if now < cooldown_until:
                     if results:
-                        if current_tts_task and not current_tts_task.done():
-                            current_tts_task.cancel()
-                            current_tts_task = None
-                            await send_json({"type": "interrupt"})
-                        cooldown_until = 0.0
-                        processing_tts = False
-                        pipeline.reset()
-                        await send_json({"type": "busy", "status": False})
+                        if not pending_end_conversation:
+                            if current_tts_task and not current_tts_task.done():
+                                current_tts_task.cancel()
+                                current_tts_task = None
+                                await send_json({"type": "interrupt"})
+                            cooldown_until = 0.0
+                            processing_tts = False
+                            pipeline.reset()
+                            await send_json({"type": "busy", "status": False})
+                        else:
+                            pipeline.reset()
                     continue
 
                 cooldown_until = max(0.0, cooldown_until)
@@ -117,6 +142,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 pipeline.reset()
                 cooldown_until = 0.0
                 processing_tts = False
+                pending_end_conversation = False
                 await send_json({"type": "reset_ack"})
                 await send_json({"type": "busy", "status": False})
 
@@ -125,6 +151,8 @@ async def websocket_endpoint(websocket: WebSocket):
                     cooldown_until = time.time() + 0.5
                     processing_tts = False
                     await send_json({"type": "busy", "status": False})
+                if pending_end_conversation:
+                    await send_memory_prompt()
 
             elif msg_type == "summarize":
                 if not pipeline.llm.client:
@@ -148,6 +176,21 @@ async def websocket_endpoint(websocket: WebSocket):
                 if current_tts_task and not current_tts_task.done():
                     current_tts_task.cancel()
                     current_tts_task = None
+                await send_memory_prompt()
+
+            elif msg_type == "save_memory":
+                history_text = pipeline.llm.get_history_text()
+                if history_text.strip():
+                    try:
+                        summary = await pipeline.summarize_history(history_text)
+                        if summary:
+                            pipeline.save_memory(summary)
+                    except Exception:
+                        pass
+                await send_json({"type": "stopped"})
+                break
+
+            elif msg_type == "dismiss_memory":
                 await send_json({"type": "stopped"})
                 break
 

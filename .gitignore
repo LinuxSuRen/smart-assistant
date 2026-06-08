@@ -9,3 +9,4 @@ build/
 *.safetensors
 *.onnx
 .DS_Store
+data/
