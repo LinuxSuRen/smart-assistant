@@ -10,3 +10,4 @@ build/
 *.onnx
 .DS_Store
 data/
+.sisyphus/
