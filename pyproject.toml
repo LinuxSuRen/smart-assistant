@@ -8,11 +8,14 @@ version = "0.1.0"
 description = "Real-time speech recognition with speaker diarization and AI voice assistant"
 requires-python = ">=3.10"
 dependencies = [
+    # numba>=0.63 dropped pre-built wheels for macOS x86_64 — pin here to avoid source build
+    "numba==0.62.1",
+    "llvmlite==0.45.1",
     "funasr>=1.1.0",
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
     "silero-vad>=5.1",
-    "numpy>=1.24",
+    "numpy>=1.24,<2",
     "soundfile>=0.12",
     "litellm>=1.50.0",
     "pydantic>=2.0",
